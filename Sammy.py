@@ -86,6 +86,7 @@ class Results:
 ## ADD_RESULT
 ## ===============================
     def add_result(self,result):
+        print("Adding result %s\n"%result)
         self.list_results.append(result)
         self.nb_results+=1
 
@@ -102,7 +103,10 @@ class Results:
 ## SORT
 ## ===============================
     def sort(self,reverse=False):
-        return Results(sorted(self.list_results, key=operator.attrgetter('cv_score'), reverse=reverse))
+        print("sorting %d results"%self.nb_results)
+        results_sorted=sorted(self.list_results, key=operator.attrgetter('cv_score'), reverse=reverse)
+        print("%d results are sorted \n"%len(results_sorted))
+        return Results(results_sorted)
 
 
 ## BEST_SCORE
@@ -138,20 +142,20 @@ class Results:
             
 ## RUN
 ## ===============================
-    def run(self,Xtrain,ytrain,method,param,time_limit=3600):
-        start=time.time()
-        for parm in ParameterGrid(param):
-            if self.check_isnew(method,parm):
-                ts = time.time()
-                scores=cross_val_score(method(**parm), Xtrain, ytrain, cv=10)
-                te = time.time()
-                self.total_time+=(te-ts)
-                self.add_result(result(method,parm,scores.mean()))
-                if (time.time()-start)>(time_limit):
-                    print('Your time limit was reached.\n See you soon!')
-                    break
-            else:
-                print('This configuration was already ran.',parm)
+    # def run(self,Xtrain,ytrain,method,param,time_limit=3600):
+        # start=time.time()
+        # for parm in ParameterGrid(param):
+            # if self.check_isnew(method,parm):
+                # ts = time.time()
+                # scores=cross_val_score(method(**parm), Xtrain, ytrain, cv=10)
+                # te = time.time()
+                # self.total_time+=(te-ts)
+                # self.add_result(result(method,parm,scores.mean()))
+                # if (time.time()-start)>(time_limit):
+                    # print('Your time limit was reached.\n See you soon!')
+                    # break
+            # else:
+                # print('This configuration was already ran.',parm)
 
             
 ## CHECK_ISNEW
@@ -174,6 +178,7 @@ class Results:
 ## ADD_WRONG_CONFIG
 ## ===============================
     def add_wrong_config(self,param):
+        print("Adding wrong config\n")
         self.wrong_configs.append(param)
         return 0
 
@@ -228,12 +233,14 @@ class Results:
             bests=self.sort(True)
         else:
             bests=self.sort(False)
-        if method!='all':
-            bests=bests.restrict_to_methods(method)
-            nb_selected=min(bests.nb_results,nb_selected)
+        #if method!='all':
+            #bests=bests.restrict_to_methods(method)
+            #nb_selected=min(bests.nb_results,nb_selected)
         print("I selected the %d best solutions I know."%(nb_selected))
         selection=bests.list_results[:nb_selected]
-        return Results(selection)
+        out=Results(selection)
+        print("Selection: %s \n"%out)
+        return out
 
     
 ## BREED
@@ -319,9 +326,9 @@ class Results:
     def test(self, Xtrain, ytrain, Xtest, ytest, nb_test=5):
         nb_test=min(nb_test,self.nb_results)
         l_bests=self.bests(nb=nb_test)
-        for r in l_best:
+        for r in l_bests:
             print('Testing %s with parameters: %s'%(Methods_names[r.method],r.params))
-            model=r.method(r.params)
+            model=r.method(**r.params)
             predictor=model.fit(Xtrain,ytrain)
             score = predictor.score(Xtest, ytest)
             print("Test Score=",score)
@@ -375,14 +382,14 @@ def get_param_choices(method):
         param=[{"penalty":['l2','l1'],
         "dual":[True,False],
         "tol":[0.0001],
-        "C":np.linspace(0,2,21),
+        "C":np.linspace(0.5,10,20),
         "fit_intercept":[True],#,False
         "intercept_scaling":[1],
         "class_weight":[None],
         "random_state":[None],
         "solver":['liblinear','newton-cg', 'lbfgs', 'liblinear', 'sag', 'saga'],
         "max_iter":[100],
-        "multi_class":['ovr','multinomial'],
+        "multi_class":['ovr'],#'multinomial'
           }]
     
     if method is XGBClassifier:
