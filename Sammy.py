@@ -21,6 +21,7 @@ from sklearn.svm import SVC, LinearSVC
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis, QuadraticDiscriminantAnalysis
 from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier, GradientBoostingClassifier
 from sklearn.metrics import confusion_matrix
+from sklearn.neural_network import MLPClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
@@ -28,20 +29,27 @@ from sklearn.model_selection import cross_val_score
 from xgboost import XGBClassifier
 import sys
 import copy
-
+import copy
 
 Methods_names={LinearSVC:"LinearSVC",
          SVC:"SVC",
          LogisticRegression:"LogisticRegression",
-         XGBClassifier:"XGBClassifier"         
+         XGBClassifier:"XGBClassifier",
+         MLPClassifier:"MLPClassifier",
          }
+
 Methods={"LinearSVC":LinearSVC,
          "SVC":SVC,
          "LogisticRegression":LogisticRegression,
-         "XGBClassifier":XGBClassifier         
+         "XGBClassifier":XGBClassifier,
+         "MLPClassifier":MLPClassifier,
          }
          
-
+"""
+################################################################################
+							CLASS result
+################################################################################
+"""
 class result:
     def __init__(self, method, params, cv_score):
         self.method=method
@@ -54,41 +62,73 @@ class result:
         print('Score: %0.3e' %self.cv_score)
         return ''
         
+    def __eq__(self, other):
+        return (self.__dict__ == other.__dict__)
 
+
+
+"""
+################################################################################
+							CLASS Results
+################################################################################
+"""
 class Results:
+
+## INIT
+## ===============================
     def __init__(self,list=[]):
         self.nb_results=len(list)
         self.list_results=list
         self.total_time=0
         self.wrong_configs=[]
-        
+
+
+## ADD_RESULT
+## ===============================
     def add_result(self,result):
         self.list_results.append(result)
         self.nb_results+=1
+
         
+## STR
+## ===============================
     def __str__(self):
         print('%d Results:' %self.nb_results)
         for r in self.list_results:
             print(r)
         return '\n'
 
+
+## SORT
+## ===============================
     def sort(self,reverse=False):
         return Results(sorted(self.list_results, key=operator.attrgetter('cv_score'), reverse=reverse))
 
+
+## BEST_SCORE
+## ===============================
     def best_score(self,max=True):
         return sorted(self.list_results, key=operator.attrgetter('cv_score'), reverse=max)[0].cv_score
 
+
+## BESTS
+## ===============================
     def bests(self,max=True,nb=1):
         return sorted(self.list_results, key=operator.attrgetter('cv_score'), reverse=max)[:nb]
+
         
+## ISNAN
+## ===============================
     def isnan(self,obj):
         if type(obj) is Results:
             l=[]
             for r in obj.list_results:
                 l.append(np.isnan(r.cv_score))
-
         return l
+
         
+## SAY_HELLO
+## ===============================
     def say_hello(self):
         if self.nb_results==0:
             print('Welcome, I am Sammy Nimizz.\nMay I help you?')
@@ -96,6 +136,8 @@ class Results:
             print('Welcome back, I am Sammy Nimizz.\nI have already run %d models and got a best score of %0.3e.\n May I help you? (I am %d secondes old)'%(self.nb_results,self.best_score(),self.total_time))
 
             
+## RUN
+## ===============================
     def run(self,Xtrain,ytrain,method,param,time_limit=3600):
         start=time.time()
         for parm in ParameterGrid(param):
@@ -110,7 +152,10 @@ class Results:
                     break
             else:
                 print('This configuration was already ran.',parm)
+
             
+## CHECK_ISNEW
+## ===============================
     def check_isnew(self,method,param):
         res=True
         for r in self.list_results:
@@ -119,17 +164,22 @@ class Results:
                     res= False
                     break
         for p in self.wrong_configs:
-            if p==param:
-                res=False
-                break
+                if p==param:
+                    res=False
+                    break
+        print('Method is new? %s \n'%res,method,param)
         return res
                   
                                 
+## ADD_WRONG_CONFIG
+## ===============================
     def add_wrong_config(self,param):
         self.wrong_configs.append(param)
         return 0
 
         
+## RANDOM_START
+## ===============================
     def random_start(self,Xtrain,ytrain,nb_run=10,methods='all'):
         params={}
             
@@ -155,24 +205,77 @@ class Results:
                 self.run_cross_val(Xtrain,ytrain,method,new_param)
     
     
+## OPTIMIZE
+## ===============================
     def optimize(self,Xtrain,ytrain,nb_epoch=5,method='all',goal='max',coef_selection=0.2):
         print('I want to improve myself!')
         if self.nb_results<10:
-            print("I am too young to be optimized, let me try some randomness first.")
+            print("I am too young to be optimized, let me try some randomness first.\n")
             self.random_start(Xtrain,ytrain,nb_run=10,methods=method)
         for epoch in range(nb_epoch):
             print('\nEpoch',epoch+1)
-            pop=self.select(coef_selection,method,goal)
+            pop=copy.deepcopy(self.select(coef_selection,method,goal))
             pop=pop.breed()
             pop=pop.mutate()
             self.update(pop,Xtrain,ytrain)
+
+
+## SELECT
+## ===============================
+    def select(self,coef_selection,method,goal):
+        nb_selected=round(self.nb_results*coef_selection)
+        if goal=='max':
+            bests=self.sort(True)
+        else:
+            bests=self.sort(False)
+        if method!='all':
+            bests=bests.restrict_to_methods(method)
+            nb_selected=min(bests.nb_results,nb_selected)
+        print("I selected the %d best solutions I know."%(nb_selected))
+        selection=bests.list_results[:nb_selected]
+        return Results(selection)
+
+    
+## BREED
+## ===============================
+    def breed(self):
+        return self
+
         
+## MUTATE
+## ===============================
+    def mutate(self):
+        print('Mutation!')
+        params={}
+        for r in self.list_results:
+            if r.method not in params.keys():
+                params.update({r.method:get_param_choices(r.method)})
+            try:
+                ind=list(ParameterGrid(params[r.method])).index(r.params)
+                new_ind=np.random.randint(max(0,ind-3),min(ind+3,len(list(ParameterGrid(params[r.method])))))
+                new_param=ParameterGrid(params[r.method])[new_ind]
+                
+            except:
+                print("An error during mutation.", sys.exc_info()[0])
+                raise
+                new_ind=np.random.randint(0,len(ParameterGrid(params[r.method]))-1)
+                new_param=ParameterGrid(params[r.method])[new_ind]
+            r.params=new_param
+            r.cv_score=0
+        return self
+
+        
+## UPDATE
+## ===============================
     def update(self,pop, Xtrain,ytrain):
         print('Evaluation...')
         for r in pop.list_results:
-            if self.check_isnew(r.method,r.param):
+            if self.check_isnew(r.method,r.params):
                 self.run_cross_val(Xtrain,ytrain,r.method,r.params)
+
     
+## RUN_CROSS_VAL
+## ===============================
     def run_cross_val(self,Xtrain,ytrain,method,param):
         print('Running %s with parameters: %s'%(Methods_names[method],param))            
         ts = time.time()
@@ -186,47 +289,14 @@ class Results:
         except TypeError as err:
             print("Type error: {0}".format(err))
         except:
-            print("An error occured with this configuration.", sys.exc_info()[0])
+            print("An error occured with this configuration.%s \n"% sys.exc_info()[0])
             self.add_wrong_config(param)
         te = time.time()
-        self.total_time+=(te-ts)
-    
-    
-    def breed(self):
-        return self
-        
-    def mutate(self):
-        print('Mutation!')
-        params={}
-        for r in self.list_results:
-            if r.method not in params.keys():
-                params.update({r.method:get_param_choices(r.method)})
-            try:
-                ind=list(ParameterGrid(params[r.method])).index(r.param)
-                new_ind=np.random.poisson(ind)
-                new_param=ParameterGrid(params[r.method])[new_ind]
-                
-            except:
-                new_ind=np.random.randint(0,len(ParameterGrid(params[r.method]))-1)
-                new_param=ParameterGrid(params[r.method])[new_ind]
-            r.param=new_param
-            r.cv_score=0
-        return self
-    
-    def select(self,coef_selection,method,goal):
-        nb_selected=round(self.nb_results*coef_selection)
-        if goal=='max':
-            bests=self.sort(True)
-        else:
-            bests=self.sort(False)
-        if method!='all':
-            bests=bests.restrict_to_methods(method)
-            nb_selected=min(bests.nb_results,nb_selected)
-        print("I selected the %d best solutions I know."%(nb_selected))
-        print(type(nb_selected))
-        selection=bests.list_results[:nb_selected]
-        return Results(selection)
+        self.total_time+=(te-ts)  
+
             
+## RESTRICT_TO_METHODS
+## ===============================
     def restrict_to_methods(self,methods):
         if type(methods) is not list:
             methods=[methods]
@@ -235,17 +305,29 @@ class Results:
             if r.method in methods:
                 New_Results.add_result(r)
         return New_Results
+
+
+## ELIMINATE_DOUBLES
+## ===============================
+    def eliminate_doubles(self):
+        for r in self.list_results:
+            pass
+
             
+## TEST
+## ===============================
     def test(self, Xtrain, ytrain, Xtest, ytest, nb_test=5):
         nb_test=min(nb_test,self.nb_results)
         l_bests=self.bests(nb=nb_test)
         for r in l_best:
-            print('Testing %s with parameters: %s'%(Methods_names[r.method],r.param))
-            model=r.method(r.param)
+            print('Testing %s with parameters: %s'%(Methods_names[r.method],r.params))
+            model=r.method(r.params)
             predictor=model.fit(Xtrain,ytrain)
             score = predictor.score(Xtest, ytest)
             print("Test Score=",score)
 
+## ANALYSE
+## ===============================
     def analyse(self,method='all'):
         if method is not 'all':
             # convert list_results to data frame so that we can run a LogisticRegression on it
@@ -253,13 +335,17 @@ class Results:
             names_param=list(*(self.list_results[0].param))
             for r in self.list_results:
                 print(r.method)
-                print(**(r.param))
+                print(**(r.params))
                 print(r.cv_score)
             
             #df=pd.DataFrame(np.array(list).reshape(self.nb_results,len(list[0]), columns = ['method',names_param,'score'])
             #print(df)
     
-    
+"""
+################################################################################
+							Other Functions
+################################################################################
+"""    
 def get_param_choices(method):
     if method is LinearSVC:
         param=[{"penalty":['l2','l1'],
@@ -319,8 +405,42 @@ def get_param_choices(method):
         "scale_pos_weight":[1], 
         "base_score":[0.5]
         }]
-    if method not in [LinearSVC, SVC, LogisticRegression, XGBClassifier]:
+
+    if method is MLPClassifier:
+        param=[{"hidden_layer_sizes":nn_hidden_space(5),
+            "activation":['relu'],
+            "solver":['adam'], 
+            "alpha":[0.0001], 
+            "batch_size":['auto'], 
+            "learning_rate":['constant'], 
+            "learning_rate_init":[0.001], 
+            "power_t":[0.5],    
+            "max_iter":[200], 
+            "shuffle":[True], 
+            "random_state":[None], 
+            "tol":[0.0001], 
+            "verbose":[False], 
+            "warm_start":[False], 
+            "momentum":[0.9], 
+            "nesterovs_momentum":[True], 
+            "early_stopping":[False], 
+            "validation_fraction":[0.1], 
+            "beta_1":[0.9], 
+            "beta_2":[0.999], 
+            "epsilon":[1e-08]
+        }]
+
+    if method not in list(Methods_names.keys()):
         print("Method %s not implemented."%method,type(method))
 
     return param
+
+def nn_hidden_space(max_layers=10,max_node_per_layer=200):
+    space=[]
+    for n_layer in range(max_layers):
+        for n_node in np.concatenate([range(10,50,10),range(50,200,50)]):
+            space.append(tuple(np.repeat(n_node,n_layer+1)))
+    return space
+
+
     
