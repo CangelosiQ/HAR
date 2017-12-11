@@ -36,6 +36,10 @@ Methods_names={LinearSVC:"LinearSVC",
          LogisticRegression:"LogisticRegression",
          XGBClassifier:"XGBClassifier",
          MLPClassifier:"MLPClassifier",
+         RandomForestClassifier:"RandomForestClassifier",
+         AdaBoostClassifier:"AdaBoostClassifier", 
+         GradientBoostingClassifier:"GradientBoostingClassifier",
+         KNeighborsClassifier:"KNeighborsClassifier"
          }
 
 Methods={"LinearSVC":LinearSVC,
@@ -43,6 +47,10 @@ Methods={"LinearSVC":LinearSVC,
          "LogisticRegression":LogisticRegression,
          "XGBClassifier":XGBClassifier,
          "MLPClassifier":MLPClassifier,
+         "RandomForestClassifier":RandomForestClassifier,
+         "AdaBoostClassifier":AdaBoostClassifier, 
+         "GradientBoostingClassifier":GradientBoostingClassifier,
+         "KNeighborsClassifier":KNeighborsClassifier
          }
          
 """
@@ -55,11 +63,11 @@ class result:
         self.method=method
         self.cv_score=cv_score
         self.params=params
-
+        
     def __str__(self):
         print('%s:\nParameters:'%Methods_names[self.method])
         print(self.params)
-        print('Score: %0.3e' %self.cv_score)
+        print('CV Score:   %0.3e' %self.cv_score)
         return ''
         
     def __eq__(self, other):
@@ -86,7 +94,7 @@ class Results:
 ## ADD_RESULT
 ## ===============================
     def add_result(self,result):
-        print("Adding result %s\n"%result)
+        #print("Adding result %s\n"%result)
         self.list_results.append(result)
         self.nb_results+=1
 
@@ -103,9 +111,9 @@ class Results:
 ## SORT
 ## ===============================
     def sort(self,reverse=False):
-        print("sorting %d results"%self.nb_results)
+        #print("sorting %d results"%self.nb_results)
         results_sorted=sorted(self.list_results, key=operator.attrgetter('cv_score'), reverse=reverse)
-        print("%d results are sorted \n"%len(results_sorted))
+        #print("%d results are sorted \n"%len(results_sorted))
         return Results(results_sorted)
 
 
@@ -171,24 +179,25 @@ class Results:
                 if p==param:
                     res=False
                     break
-        print('Method is new? %s \n'%res,method,param)
+        #print('Method is new? %s \n'%res,method,param)
         return res
                   
                                 
 ## ADD_WRONG_CONFIG
 ## ===============================
     def add_wrong_config(self,param):
-        print("Adding wrong config\n")
+        #print("Adding wrong config\n")
         self.wrong_configs.append(param)
         return 0
 
         
 ## RANDOM_START
 ## ===============================
-    def random_start(self,Xtrain,ytrain,nb_run=10,methods='all'):
+    def random_start(self, Xtrain, ytrain, nb_run=10, methods='all'):
         params={}
             
         for run in range(nb_run):
+            print("Run %d/%d"%(run+1,nb_run))
             if methods is not 'all':
                 if type(methods) is not list:
                     method=methods
@@ -207,16 +216,16 @@ class Results:
                 ind=np.random.randint(0,len(ParameterGrid(params[method]))-1)
                 new_param=ParameterGrid(params[method])[ind]
             if self.check_isnew(method,new_param):
-                self.run_cross_val(Xtrain,ytrain,method,new_param)
+                self.run_cross_val(Xtrain,ytrain, method,new_param)
     
     
 ## OPTIMIZE
 ## ===============================
-    def optimize(self,Xtrain,ytrain,nb_epoch=5,method='all',goal='max',coef_selection=0.2):
+    def optimize(self,Xtrain,ytrain, nb_epoch=5,method='all',goal='max',coef_selection=0.2):
         print('I want to improve myself!')
         if self.nb_results<10:
             print("I am too young to be optimized, let me try some randomness first.\n")
-            self.random_start(Xtrain,ytrain,nb_run=10,methods=method)
+            self.random_start(Xtrain,ytrain,Xtest,ytest, nb_run=10,methods=method)
         for epoch in range(nb_epoch):
             print('\nEpoch',epoch+1)
             pop=copy.deepcopy(self.select(coef_selection,method,goal))
@@ -239,7 +248,7 @@ class Results:
         print("I selected the %d best solutions I know."%(nb_selected))
         selection=bests.list_results[:nb_selected]
         out=Results(selection)
-        print("Selection: %s \n"%out)
+        # print("Selection: %s \n"%out)
         return out
 
     
@@ -275,15 +284,15 @@ class Results:
 ## UPDATE
 ## ===============================
     def update(self,pop, Xtrain,ytrain):
-        print('Evaluation...')
+        #print('Evaluation...')
         for r in pop.list_results:
             if self.check_isnew(r.method,r.params):
-                self.run_cross_val(Xtrain,ytrain,r.method,r.params)
+                self.run_cross_val(Xtrain,ytrain, r.method,r.params)
 
     
 ## RUN_CROSS_VAL
 ## ===============================
-    def run_cross_val(self,Xtrain,ytrain,method,param):
+    def run_cross_val(self,Xtrain,ytrain, method,param):
         print('Running %s with parameters: %s'%(Methods_names[method],param))            
         ts = time.time()
 
@@ -333,6 +342,16 @@ class Results:
             score = predictor.score(Xtest, ytest)
             print("Test Score=",score)
 
+## BASIC_TOUR
+## ===============================
+    def basic_tour(self, Xtrain, ytrain):
+        for method in Methods_names:
+            self.run_cross_val(Xtrain,ytrain, method,{})
+
+## BASIC_TOUR
+## ===============================
+
+            
 ## ANALYSE
 ## ===============================
     def analyse(self,method='all'):
@@ -359,8 +378,8 @@ def get_param_choices(method):
         "loss":['squared_hinge','hinge'],
         "dual":[True,False],
         "tol":[0.0001],
-        "C":np.concatenate([np.linspace(0,1,21),np.linspace(1.1,100,21)]),
-        "multi_class":['ovr','crammer_singer'],
+        "C":np.concatenate([np.linspace(0,5,21),np.linspace(5.5,10,10)]),
+        "multi_class":['ovr'],#'crammer_singer'
         "fit_intercept":[True,False],
         "intercept_scaling":[1],
         "class_weight":[None]
@@ -368,7 +387,7 @@ def get_param_choices(method):
         
     if method is SVC:
         param=[{"C":np.concatenate([np.linspace(0,1,21),np.linspace(1.1,100,21)]),
-            "kernel":['rbf','linear','poly', 'sigmoid', 'precomputed'],
+            "kernel":['rbf','poly', 'sigmoid', 'precomputed'],
             "degree":range(2,11),
             "gamma":['auto'], 
             "coef0":[0.0], 
@@ -436,7 +455,67 @@ def get_param_choices(method):
             "beta_2":[0.999], 
             "epsilon":[1e-08]
         }]
-
+    if method is RandomForestClassifier:
+        param=[{"n_estimators":range(10,200,20),
+            "criterion":['gini','entropy'],
+            "max_depth":range(2,15),
+            "min_samples_split":[1e-2,1e-3,5e-2],
+            "min_samples_leaf":[1],
+            "min_weight_fraction_leaf":[0.0],
+            "max_features":['auto'], 
+            "max_leaf_nodes":[None], 
+            "min_impurity_decrease":[0.0], 
+            "min_impurity_split":[None],
+            "bootstrap":[True], 
+            "oob_score":[False],
+            "n_jobs":[1], 
+            "random_state":[None], 
+            "verbose":[0], 
+            "warm_start":[False], 
+            "class_weight":[None]
+        }]
+    
+    if method is AdaBoostClassifier:
+        param=[{"base_estimator":[None],
+            "n_estimators":range(10,200,20), 
+            "learning_rate":[1.0], 
+            "algorithm":['SAMME.R'], 
+            "random_state":[None]
+        }]
+        
+    if method is GradientBoostingClassifier:
+        param=[{"loss":['deviance'], 
+            "learning_rate":[0.1], 
+            "n_estimators":[50,100,150,200], 
+            "subsample":[1.0], 
+            "criterion":['friedman_mse'], 
+            "min_samples_split":[1e-2,1e-3,5e-2], 
+            "min_samples_leaf":[1], 
+            "min_weight_fraction_leaf":[0.0], 
+            "max_depth":range(2,15), 
+            "min_impurity_decrease":[0.0], 
+            "min_impurity_split":[None], 
+            "init":[None], 
+            "random_state":[None], 
+            "max_features":[None], 
+            "verbose":[0], 
+            "max_leaf_nodes":[None], 
+            "warm_start":[False], 
+            "presort":['auto']
+        }]
+        
+    if method is KNeighborsClassifier:
+        param=[{"n_neighbors":range(2,15), 
+            "weights":['uniform','distance'], 
+            "algorithm":['auto'], 
+            "leaf_size":[30], 
+            "p":[2,1], 
+            "metric":['minkowski'], 
+            "metric_params":[None], 
+            "n_jobs":[1]
+        }]
+        
+        
     if method not in list(Methods_names.keys()):
         print("Method %s not implemented."%method,type(method))
 
